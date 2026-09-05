@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --foreground: #16181d;
+  --muted: #5b6472;
+  --border: #dfe3ea;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --font-sans: var(--font-pretendard), system-ui, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    var(--font-sans),
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    sans-serif;
+  word-break: keep-all;
+}
+
+*:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}

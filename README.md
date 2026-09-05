@@ -1,74 +1,82 @@
 # SecondSign
 
-가입 직전, 사용자가 확정한 금융 원칙과 상품설명서의 근거가 확인된 조건만 대조하는 MVP입니다.
+사용자가 확정한 금융 원칙과 상품설명서에서 **근거가 확인된 조건만** 결정론적으로 대조하는 가입 전 검증 MVP입니다.
 
-현재 저장소에는 UI나 실제 LLM/PDF 연동보다 먼저 확인할 수 있도록 핵심 처리 파이프라인을 구축했습니다.
+- [기능명세서](docs/FUNCTIONAL_SPECIFICATION.md)
+- [개발명세서](docs/DEVELOPMENT_SPECIFICATION.md)
 
-## 파이프라인
+## 현재 진행 상황
 
-```text
-사용자 자연어
-  -> PrincipleStructurer (AI 어댑터 경계)
-  -> 금융 원칙 초안
-  -> 사용자 수정·확정
+개발명세서 12장 기준 **0~5단계 완료**. 실제 Gemini 호출까지 확인했고 배포가 남아 있다.
 
-상품 문서
-  -> ProductDocumentAnalyzer (PDF/OCR/AI 어댑터 경계)
-  -> 문서 완전성 검사
-  -> 근거 원문·페이지가 연결된 상품 조건
+| 단계 | 상태 |
+| --- | --- |
+| 0. 프로젝트 생성과 화면 뼈대 | 완료 |
+| 1. 도메인 스키마 | 완료 |
+| 2. fixture 기반 수직 슬라이스 | 완료 |
+| 3. 금융 원칙 AI 구조화 | 완료(실제 API 호출 확인) |
+| 4. 상품 분석과 근거 확인 | 완료(실제 API 호출 확인) |
+| 5. 전체 UI와 오류 처리 | 완료 |
+| 6. 테스트와 배포 | 테스트 완료, 배포 미착수 |
 
-확정 원칙 + 검증된 근거
-  -> 결정론적 규칙 엔진
-  -> 원칙 위반 / 검증 보류 / 관련 조건 확인
-```
-
-중요한 안전장치는 다음과 같습니다.
-
-- 사용자 확정 전 초안은 규칙 엔진 입력 타입과 분리했습니다.
-- 상품 조건은 `값 + 원문 + 페이지 + 근거 확인 여부`로 저장합니다.
-- 근거가 없거나 확인되지 않은 값은 `검증 보류`로 처리합니다.
-- 페이지가 누락된 문서는 정상 검증 결과 생성을 중단합니다.
-- AI 어댑터와 최종 규칙 판정을 분리해 AI가 적합성·안전성을 직접 판정하지 않습니다.
+생성형 AI 제공자는 OpenAI가 아니라 **Google Gemini**를 쓴다. 기본 모델은 `gemini-3.6-flash`이고, 호출은 `src/lib/ai/client.ts` 한 파일에만 있다.
 
 ## 실행
 
-Node.js 24 이상이 필요합니다.
-
 ```bash
 npm install
-npm run check
-npm run demo
+cp .env.example .env.local
+# .env.local 에 GEMINI_API_KEY 를 넣는다
+npm run dev                  # http://localhost:3000
 ```
 
-- `npm run check`: TypeScript 타입 검사 후 전체 테스트 실행
-- `npm run demo`: 기본 데모 시나리오의 JSON 결과 출력
-- GitHub Actions: `main` 푸시와 Pull Request마다 동일한 검증 실행
+`USE_FIXTURE_MODE=true` 로 두면 AI를 호출하지 않고 고정 샘플로 전 구간이 동작한다.
+데모 중 외부 API가 불안정하면 이 값을 바꿔 재시작하면 되고, 화면 상단에 샘플 모드임이 표시된다.
 
-## 코드 위치
+## 검사
 
-- `src/domain.ts`: Zod 런타임 스키마와 TypeScript 타입
-- `src/ports.ts`: 추후 연결할 자연어 구조화 및 PDF 분석 인터페이스
-- `src/pipeline.ts`: 단계 순서와 입력/출력 검증
-- `src/rules.ts`: 다섯 가지 금융 원칙의 결정론적 규칙
-- `examples/default-demo.json`: 기본 데모 입력·상품 분석 결과
-- `test/*.test.ts`: 기능명세서의 시나리오·문서 누락 예외·단계 경계 테스트
+```bash
+npm run lint
+npm run typecheck
+npm test        # 49개
+npm run build
+npm run check   # 위 네 검사를 순서대로 실행
+npm run check:gemini # 실제 Gemini 연결·구조화 진단
+```
 
-## 라이브러리와 프로젝트 코드 구분
+## 구조
 
-라이브러리에서 제공하는 기능은 직접 다시 구현하지 않았습니다.
+```text
+src/lib/domain/      스키마(Zod strict), 타입, 금융 원칙 도메인 규칙
+src/lib/rules/       다섯 개의 순수 규칙 함수와 evaluateRules
+src/lib/evidence/    원문·페이지 재검증(verified 플래그를 결정하는 유일한 지점)
+src/lib/products/    샘플 상품 저장소(허용 목록 기반)
+src/lib/analysis/    문서 상태 확인 → 조건 추출 → 근거 검증 파이프라인
+src/lib/ai/          Gemini 호출, 프롬프트, JSON Schema, 응답 → 도메인 매핑
+src/lib/fixtures/    USE_FIXTURE_MODE 일 때 AI 대신 쓰는 고정 데이터
+src/data/products/   샘플 상품 manifest.json 과 페이지별 텍스트
+src/components/      단계형 UI
+tests/               스키마·규칙·근거 검증 단위 테스트, 시나리오 통합 테스트
+```
 
-- `zod`: `z.object`, `z.enum`, `parse`, `superRefine`을 사용한 런타임 입력 검증
-- `vitest`: `describe`, `it`, `expect`를 사용한 테스트
-- `node:fs/promises`: Node.js가 제공하는 `readFile`로 데모 JSON 읽기
-- `tsx`: TypeScript 데모 스크립트 실행
-- `typescript`: 정적 타입 검사
+## 남은 일
 
-아래는 이 프로젝트에서 새로 정의한 애플리케이션 코드입니다.
+- 샘플 PDF 3종 제작 후 `public/products/` 배치, 결과 화면에서 페이지 링크 연결
+- Vercel 배포와 환경변수 설정(`GEMINI_API_KEY`, `GEMINI_MODEL`, `USE_FIXTURE_MODE`)
+- 배포 URL smoke test
 
-- `SecondSignPipeline`: 구조화·사용자 확정·문서 분석·검증의 단계 경계를 강제
-- `PrincipleStructurer`, `ProductDocumentAnalyzer`: 실제 LLM/PDF 구현을 나중에 꽂기 위한 포트
-- `evaluateRules` 및 내부 다섯 규칙 함수: 명세서의 금융 원칙 비교 로직
-- `verifiedValue`, `verifiedEvidence`: 확인된 문서 근거만 규칙에 전달하는 보조 함수
-- `IncompleteDocumentError`: 누락 페이지가 있는 문서의 검증을 중단하는 도메인 오류 타입
+## 배포 순서
 
-세부 기능 범위는 [`docs/FUNCTIONAL_SPECIFICATION.md`](docs/FUNCTIONAL_SPECIFICATION.md)를 참고하세요.
+1. `sangmin` 브랜치에서 `npm run check`과 `npm run check:gemini`를 통과한다.
+2. Pull Request로 `sangmin` 브랜치를 `main`에 병합한다.
+3. Vercel에서 저장소를 가져오고 Node.js 24를 사용한다.
+4. Vercel Production 환경변수에 `.env.example`의 세 항목을 설정한다.
+5. 배포 후 금융 원칙 구조화와 상품 분석을 한 번씩 실행한다.
+
+## 원칙
+
+- 사용자가 확정하기 전의 값은 규칙 엔진에 전달하지 않는다.
+- AI 는 `verified: true` 를 만들 수 없다. 근거 확인은 `src/lib/evidence/verify-evidence.ts` 만 수행한다.
+- 근거를 확인하지 못한 조건은 판정에서 제외되고 해당 원칙은 `HOLD` 가 된다.
+- 규칙 함수는 네트워크·파일·시스템 시간에 접근하지 않는 순수 함수다.
+- API 키는 `src/lib/config.ts` 에서만 읽는다. 클라이언트 컴포넌트에서 import 하지 않는다.
